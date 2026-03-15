@@ -1,0 +1,16 @@
+flowchart LR
+    U[User: Voice/Text/Screen] --> FE[Web Frontend]
+    FE -->|HTTP/WS| BE[Node.js Agent Orchestrator\nCloud Run]
+
+    BE --> M1[Live Agent Mode]
+    BE --> M2[Creative Storyteller Mode]
+    BE --> M3[UI Navigator Mode]
+
+    M1 --> GX[Gemini Model API]
+    M2 --> GX
+    M3 --> GX
+
+    BE --> FS[(Firestore Session Memory)]
+    BE --> CS[(Cloud Storage Media Bucket)]
+
+    Dev[Cloud Build / Terraform] --> BE
