@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TriSense Enterprise OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;600;700&family=Fira+Code:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="styles.css?v=6.1" />
+</head>
+<body class="enterprise-body">
+  <!-- Interactive WebGL/Canvas Background mapped to Redux-like state -->
+  <canvas id="bgCanvas" class="bg-canvas"></canvas>
+
+  <div class="app-container">
+    <aside class="sidebar glass-panel">
+      <div class="brand">
+        <span class="brand-icon">🧠</span>
+        <span class="brand-text">TriSense <span class="accent">OS</span></span>
+      </div>
+      
+      <nav class="engine-nav">
+        <div class="nav-section">Operational Control</div>
+        <button class="nav-btn active" data-engine="live-agent">🗣️ Communications Specialist</button>
+        <button class="nav-btn" data-engine="roundtable-conference">🏛️ Boardroom Moderator</button>
+        <button class="nav-btn" data-engine="ui-navigator">🌐 Interface Analyst</button>
+
+        <div class="nav-section mt-4">Engineering Suite</div>
+        <button class="nav-btn" data-engine="code-analyzer">💻 Software Architect</button>
+        <button class="nav-btn" data-engine="self-healing-coder">🛠️ Self-Healing Engineer</button>
+        <button class="nav-btn" data-engine="security-auditor">🛡️ Security Auditor</button>
+        <button class="nav-btn" data-engine="legal-scrutinizer">⚖️ Legal Scrutinizer</button>
+        
+        <div class="nav-section mt-4">Intelligence Suite</div>
+        <button class="nav-btn" data-engine="financial-analyst">📈 Financial Analyst</button>
+        <button class="nav-btn" data-engine="data-scientist">📊 Data Scientist</button>
+        <button class="nav-btn" data-engine="marketing-strategist">🎯 Marketing Strategist</button>
+        <button class="nav-btn" data-engine="health-diagnostic">🩺 Health Diagnostic</button>
+
+        <div class="nav-section mt-4">Creative Suite</div>
+        <button class="nav-btn" data-engine="creative-storyteller">🎭 Creative Director</button>
+        <button class="nav-btn" data-engine="video-director">🎬 Video Producer</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile small">
+          <div class="avatar">👨‍💻</div>
+          <div class="user-meta">
+            <div class="user-name">Admin User</div>
+            <div class="user-role">Superuser (JWT)</div>
+          </div>
+        </div>
+        <div class="system-status">
+          <div class="status-dot healthy"></div>
+          <span>Systems Nominal</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar glass-panel">
+        <div class="flex-between w-full">
+          <h1 class="engine-title" id="activeEngineTitle">Communications Specialist</h1>
+          <div id="sentimentHud" class="sentiment-hud">
+            <span class="hud-label">Emotion State</span>
+            <div class="flex-center gap-2">
+              <span id="sentimentValue" class="hud-value">Neutral</span>
+              <div class="sync-badge">v6.1 SYNCED</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="center-console glass-panel">
+        <div id="outputTerminal" class="terminal-body" aria-live="polite">
+          <div class="terminal-placeholder">Ready for secure interaction...</div>
+          <div id="streamContent" class="stream-content"></div>
+        </div>
+
+        <div id="ideConsole" class="ide-console hidden">
+          <div class="console-tab">System Logs & Tests</div>
+          <div id="consoleLogs" class="console-logs"></div>
+        </div>
+
+        <div id="actionCards" class="action-cards hidden"></div>
+
+        <div class="action-bar">
+          <div id="waveformWrapper" class="waveform-wrapper hidden">
+            <div class="wave-container" id="waveContainer">
+              <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            </div>
+          </div>
+          
+          <div id="dynamicInputs" class="dynamic-inputs"></div>
+          
+          <div class="input-hub">
+            <label class="attachment-btn" title="Upload Media">
+              📎
+              <input type="file" id="fileAttachment" hidden accept="image/*" />
+            </label>
+            <textarea id="mainInput" class="enterprise-input" placeholder="Type a message or command..." rows="1"></textarea>
+            <button id="btnExecute" class="btn-primary">Send</button>
+          </div>
+          <div id="fileBadge" class="file-badge hidden"></div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="intelligence-hub glass-panel">
+      <div class="tab-header">
+        <button class="tab-btn active" data-tab="history">Session History</button>
+        <button class="tab-btn" data-tab="analytics">Intelligence Hub</button>
+      </div>
+      
+      <div id="historyList" class="tab-content history-list">
+        <div class="nav-section mb-2">Active Traces</div>
+        <div class="empty-state">No active sessions.</div>
+      </div>
+      
+      <div id="evidenceList" class="tab-content analytics-list hidden">
+        <div class="nav-section mb-2">RAG Retrieval</div>
+        <div class="empty-state">Awaiting RAG retrieval...</div>
+      </div>
+
+      <div id="mediaGallery" class="media-gallery hidden">
+        <div class="gallery-header">Multimodal Assets</div>
+        <div id="galleryGrid" class="gallery-grid"></div>
+      </div>
+
+      <div class="hub-footer">
+        <button id="btnExport" class="btn-outline w-full" disabled>Export Briefing</button>
+      </div>
+    </aside>
+
+    <div id="telemetry-bar" class="telemetry-bar">
+      <div class="telemetry-title">⚡ SERVER TELEMETRY</div>
+      <div id="telemetry-ticker" class="telemetry-ticker">Waiting for event bus streams...</div>
+    </div>
+  </div>
+
+  <audio id="ttsAudio" style="display:none"></audio>
+  <script type="module" src="dashboard.js?v=6.1"></script>
+  <script src="3d-visualizer.js?v=6.1"></script>
+</body>
+</html>
