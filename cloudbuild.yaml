@@ -38,9 +38,9 @@ images:
   - ${_IMAGE_URI}
 
 substitutions:
-  _REGION: us-central1
+  _REGION: asia-south1
   _SERVICE: gemhack-agent
-  _IMAGE_URI: us-central1-docker.pkg.dev/${PROJECT_ID}/gemhack/gemhack-agent:latest
+  _IMAGE_URI: asia-south1-docker.pkg.dev/${PROJECT_ID}/gemhack/gemhack-agent:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
