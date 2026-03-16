@@ -13,10 +13,6 @@ The stack is Node.js + TypeScript backend, simple static frontend, WebSocket liv
 - Mode orchestration and validation in `src/agent.ts`.
 - Gemini text and Gemini Live relay integration in `src/lib/gemini.ts` and `src/lib/geminiLiveRelay.ts`.
 - Firestore save + session history retrieval in `src/lib/firestore.ts`.
-- Live relay resilience implemented:
-  - reconnect with exponential backoff (`connectWithRetry` / `reconnectWithRetry`)
-  - explicit live turn phases: `idle`, `listening`, `generating`, `completed`, `cancelled`, `error`
-  - websocket cancellation path via `live_cancel`
 - Frontend includes:
   - mode switching
   - live mic controls
@@ -29,10 +25,10 @@ The stack is Node.js + TypeScript backend, simple static frontend, WebSocket liv
 - Tests pass (`npm test`).
 
 ## What Should Continue (For Other Agents)
-1. Productionize live audio path further:
+1. Productionize live audio path:
 - Replace current minimal PCM playback assumptions with robust codec negotiation.
-- Persist live turn phase transitions in Firestore for observability.
-- Add client UI controls for explicit cancel/retry using `live_cancel` and `live_state` events.
+- Add reconnect/backoff for upstream Gemini Live socket.
+- Add explicit server-side turn state machine and cancellation handling.
 
 2. Strengthen UI Navigator action safety:
 - Add action simulation mode (`dryRun=true`) and explicit step-by-step approval.

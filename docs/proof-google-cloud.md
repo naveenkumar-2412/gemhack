@@ -3,21 +3,22 @@
 This project has been fully deployed to Google Cloud per the contest requirements. Below are the specific artifacts and details verifying the deployment.
 
 ## Deployment Details
-- **Project ID:** 	ri-sense
-- **Region:** sia-south1
+- **Project ID:** tri-sense
+- **Region:** asia-south1
 - **Service Name:** gemhack-agent
 - **Google Cloud Run API URL:** https://gemhack-agent-441484548873.asia-south1.run.app
 - **Latest Live Revision:** gemhack-agent-00007-twm
 
 ## Infrastructure & Services Used
 1. **Cloud Run:** Hosts the containerized Node.js, Express, and WebSocket server securely.
-2. **Secret Manager:** Safely handles the GEMINI_API_KEY (Secret Name: gemini-api-key). The service account uses the oles/secretmanager.secretAccessor role to bind this securely.
+2. **Secret Manager:** Safely handles the GEMINI_API_KEY (Secret Name: gemini-api-key). The service account uses the 
+oles/secretmanager.secretAccessor role to bind this securely.
 3. **Cloud Build / Artifact Registry:** Handles source deployment (cloud-run-source-deploy), container orchestration, and CI pipelines (defined in cloudbuild.yaml).
 4. **Cloud Logging:** Captures all container startup, stream errors, and API payload traces.
 
 ## Verifying Health manually
 You can ping the live health endpoint at any time to verify the runtime environment is active:
-`ash
+`Bash
 curl https://gemhack-agent-441484548873.asia-south1.run.app/health
 `
 *(Should return {"ok":true,"service":"gemhack-multimodal-agent",...})*
