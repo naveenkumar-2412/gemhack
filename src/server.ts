@@ -13,18 +13,13 @@ import { requestLogger } from "./middleware/logger.js";
 import { apiRateLimit, strictRateLimit } from "./middleware/rateLimit.js";
 import { authLayer } from "./lib/authLayer.js";
 import { EngineRegistry } from "./core/EngineRegistry.js";
-import { eventBus } from "./lib/eventBus.js";
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 app.use(requestLogger);
-// Enterprise auth layer mounted globally, but permits /api/public traffic.
-// Note: tests bypass strict auth unless configured.
 app.use(authLayer);
 app.use(express.static("public"));
-
-/* ───────────────── helpers ───────────────── */
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,10 +30,13 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessa
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
   });
+
   try {
     return await Promise.race([promise, timeoutPromise]);
   } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
   }
 }
 
@@ -50,17 +48,13 @@ async function streamAgentResponse(socket: import("ws").WebSocket, responseText:
   }
 }
 
-/* ───────────────── REST endpoints ───────────────── */
-
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "gemhack-multimodal-agent", timestamp: new Date().toISOString() });
 });
 
-/** Deep health: checks Gemini reachability + Firestore connectivity */
 app.get("/api/health/deep", async (_req, res) => {
   const result: Record<string, string> = {};
 
-  // Gemini probe
   try {
     const probe = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${config.geminiApiKey || "INVALID"}`,
@@ -71,7 +65,6 @@ app.get("/api/health/deep", async (_req, res) => {
     result.gemini = config.geminiApiKey ? "unreachable" : "no-key";
   }
 
-  // Firestore probe
   try {
     if (!config.projectId) {
       result.firestore = "not-configured";
@@ -89,7 +82,6 @@ app.get("/api/health/deep", async (_req, res) => {
   res.status(allOk ? 200 : 503).json({ ok: allOk, ...result, timestamp: new Date().toISOString() });
 });
 
-/** Mode capabilities metadata */
 app.get("/api/modes", (_req, res) => {
   res.json({
     modes: [
@@ -124,23 +116,19 @@ app.get("/api/modes", (_req, res) => {
   });
 });
 
-/** Return full engine list dynamically */
 app.get("/api/engines", (_req, res) => {
   res.json({ engines: EngineRegistry.getAvailableModes() });
 });
 
-/** Main agent endpoint */
 app.post("/api/agent", apiRateLimit, async (req, res) => {
   try {
     const output = await withTimeout(runAgent(req.body), config.agentTimeoutMs, "Agent request timed out");
     res.json(output);
   } catch (error) {
-    console.error("[SERVER Error /api/agent]", error);
     res.status(400).json({ error: error instanceof Error ? error.message : "Unknown error" });
   }
 });
 
-/** SSE streaming endpoint */
 app.post("/api/stream", strictRateLimit, async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -153,31 +141,21 @@ app.post("/api/stream", strictRateLimit, async (req, res) => {
 
   try {
     const body = req.body as Record<string, unknown>;
-    const initialMode = (body.mode as any) ?? "live-agent";
+    const mode = String(body.mode ?? "live-agent");
     const userText = String(body.userText ?? body.audioTranscript ?? "");
     const sessionId = String(body.sessionId ?? "stream-session");
 
-    // 1. Resolve Autonomous Mode(s) (Phase 35)
-    const { CognitiveRouter } = await import("./core/CognitiveRouter.js");
-    const resolvedModes = await CognitiveRouter.route({ mode: initialMode as any, sessionId, userText });
-    const primaryMode = resolvedModes[0];
-    
-    sendEvent({ type: "routing", mode: primaryMode, allModes: resolvedModes });
+    const systemMap: Record<string, string> = {
+      "live-agent": "You are a concise, interruption-tolerant live voice assistant. Keep answers short.",
+      "creative-storyteller": "You are a creative director. Produce narrative + image + audio + video sections.",
+      "ui-navigator": "You are a UI operator. Return a numbered action plan for the given intent."
+    };
 
+    const systemInstruction = systemMap[mode] ?? systemMap["live-agent"];
     const history = await buildContextHistory(sessionId, 4);
-    const { prompt: userPrompt, systemInstruction } = await EngineRegistry.getEnginePrompt(primaryMode, {
-       mode: primaryMode as any,
-       userText,
-       sessionId
-    });
-
     let fullText = "";
-    const stream = generateWithGeminiStream({ 
-      systemInstruction: systemInstruction || "You are a helpful assistant.", 
-      userPrompt, 
-      history 
-    });
 
+    const stream = generateWithGeminiStream({ systemInstruction, userPrompt: userText, history });
     for await (const chunk of stream) {
       fullText += chunk;
       sendEvent({ type: "chunk", delta: chunk });
@@ -185,36 +163,16 @@ app.post("/api/stream", strictRateLimit, async (req, res) => {
 
     sendEvent({ type: "done", fullText });
   } catch (error) {
-    console.error("[SERVER Error /api/stream]", error);
     sendEvent({ type: "error", error: error instanceof Error ? error.message : "Stream failed" });
   } finally {
     res.end();
   }
 });
 
-/** Swarm Observability Hub (Phase 36) */
-app.get("/api/swarm/telemetry", (req, res) => {
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive"
-  });
-
-  const onEvent = (payload: any) => {
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
-  };
-
-  eventBus.on("telemetry", onEvent);
-  req.on("close", () => {
-    eventBus.off("telemetry", onEvent);
-  });
-});
-
-/** Session history endpoint */
 app.get("/api/session/:sessionId", apiRateLimit, async (req, res) => {
   try {
     const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
-    const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 10;
+    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : 10;
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 50) : 10;
     const turns = await withTimeout(getSessionTurns(sessionId, limit), config.agentTimeoutMs, "Session history timed out");
     res.json({ sessionId, turns });
@@ -222,8 +180,6 @@ app.get("/api/session/:sessionId", apiRateLimit, async (req, res) => {
     res.status(400).json({ error: error instanceof Error ? error.message : "Unknown error" });
   }
 });
-
-/* ───────────────── WebSocket ───────────────── */
 
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws" });
@@ -285,8 +241,7 @@ wss.on("connection", (socket) => {
           relay = new GeminiLiveRelay({
             apiKey: config.geminiApiKey,
             model: config.geminiLiveModel,
-            systemInstruction:
-              "You are a real-time voice assistant. Keep answers concise, natural, and interruption-friendly.",
+            systemInstruction: "You are a real-time voice assistant. Keep answers concise, natural, and interruption-friendly.",
             callbacks: {
               onTextDelta: (delta) => {
                 liveState.liveTextBuffer += delta;
@@ -296,7 +251,9 @@ wss.on("connection", (socket) => {
                 liveState.liveAudioChunks += 1;
                 socket.send(JSON.stringify({ type: "agent_audio_chunk", mimeType, chunkBase64 }));
               },
-              onTurnComplete: () => { liveState.liveTurnComplete = true; },
+              onTurnComplete: () => {
+                liveState.liveTurnComplete = true;
+              },
               onError: (message) => {
                 socket.send(JSON.stringify({ type: "live_ack", status: "live-error", error: message }));
               },
@@ -307,25 +264,29 @@ wss.on("connection", (socket) => {
           });
 
           try {
-            await relay.connect();
+            await relay.connectWithRetry(liveRetryOptions);
             liveState.usingGeminiLive = true;
           } catch (error) {
             liveState.usingGeminiLive = false;
             relay = null;
-            socket.send(JSON.stringify({
-              type: "live_ack",
-              status: "live-unavailable",
-              error: error instanceof Error ? error.message : "Gemini Live connection failed"
-            }));
+            socket.send(
+              JSON.stringify({
+                type: "live_ack",
+                status: "live-unavailable",
+                error: error instanceof Error ? error.message : "Gemini Live connection failed"
+              })
+            );
           }
         }
 
-        socket.send(JSON.stringify({
-          type: "live_ack",
-          status: "started",
-          audioChunks: 0,
-          usingGeminiLive: liveState.usingGeminiLive
-        }));
+        socket.send(
+          JSON.stringify({
+            type: "live_ack",
+            status: "started",
+            audioChunks: 0,
+            usingGeminiLive: liveState.usingGeminiLive
+          })
+        );
         return;
       }
 
@@ -340,15 +301,27 @@ wss.on("connection", (socket) => {
         const mimeType = String(data.mimeType ?? "audio/webm");
 
         if (relay && liveState.usingGeminiLive && chunkBase64) {
-          relay.sendAudioChunk(chunkBase64, mimeType);
+          const ok = relay.sendAudioChunk(chunkBase64, mimeType);
+          if (!ok) {
+            try {
+              await relay.reconnectWithRetry(liveRetryOptions);
+              relay.sendAudioChunk(chunkBase64, mimeType);
+            } catch {
+              liveState.usingGeminiLive = false;
+              setPhase("error");
+            }
+          }
         }
+
         if (liveState.audioChunks % 3 === 0) {
           socket.send(JSON.stringify({ type: "live_ack", status: "streaming", audioChunks: liveState.audioChunks }));
         }
         return;
       }
 
-      if (messageType === "live_transcript_partial") return;
+      if (messageType === "live_transcript_partial") {
+        return;
+      }
 
       if (messageType === "live_transcript_final") {
         if (liveState.phase !== "listening") {
@@ -359,7 +332,16 @@ wss.on("connection", (socket) => {
         if (text) {
           liveState.transcriptParts.push(text);
           if (relay && liveState.usingGeminiLive) {
-            relay.sendTranscriptText(text, false);
+            const ok = relay.sendTranscriptText(text, false);
+            if (!ok) {
+              try {
+                await relay.reconnectWithRetry(liveRetryOptions);
+                relay.sendTranscriptText(text, false);
+              } catch {
+                liveState.usingGeminiLive = false;
+                setPhase("error");
+              }
+            }
           }
         }
         return;
@@ -395,11 +377,20 @@ wss.on("connection", (socket) => {
         }
 
         setPhase("generating");
-        const stitchedTranscript = [...liveState.transcriptParts, String(data.audioTranscript ?? "")]
-          .join(" ").trim();
+
+        const stitchedTranscript = [...liveState.transcriptParts, String(data.audioTranscript ?? "")].join(" ").trim();
 
         if (relay && liveState.usingGeminiLive) {
-          relay.sendTranscriptText(String(data.userText ?? stitchedTranscript), true);
+          const ok = relay.sendTranscriptText(String(data.userText ?? stitchedTranscript), true);
+          if (!ok) {
+            try {
+              await relay.reconnectWithRetry(liveRetryOptions);
+              relay.sendTranscriptText(String(data.userText ?? stitchedTranscript), true);
+            } catch {
+              liveState.usingGeminiLive = false;
+              setPhase("error");
+            }
+          }
 
           await sleep(1800);
 
@@ -440,25 +431,6 @@ wss.on("connection", (socket) => {
       setPhase("error");
       socket.send(JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Unknown error" }));
     }
-  });
-
-  // === Phase 17: Enterprise Event Bus SSE Stream ===
-  app.get("/api/telemetry", (req, res) => {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive"
-    });
-
-    const onTelemetry = (payload: any) => {
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    };
-
-    eventBus.on("telemetry", onTelemetry);
-
-    req.on("close", () => {
-      eventBus.off("telemetry", onTelemetry);
-    });
   });
 
   socket.on("close", () => {

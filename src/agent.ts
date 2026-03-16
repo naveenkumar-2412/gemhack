@@ -76,10 +76,9 @@ export async function runAgent(raw: unknown): Promise<AgentOutput> {
   const mode = input.mode;
   const sessionId = input.sessionId;
 
-  // 1. Cognitive Intent Routing (Phase 35)
-  // If the user text is present, we refine the mode selection autonomously.
+  // Preserve explicit mode selection by default; only expand routing for roundtable mode.
   let activeModes: Mode[] = [mode];
-  if (input.userText || input.audioTranscript) {
+  if ((input.userText || input.audioTranscript) && mode === "roundtable-conference") {
     const { CognitiveRouter } = await import("./core/CognitiveRouter.js");
     activeModes = await CognitiveRouter.route(input);
   }
@@ -90,7 +89,9 @@ export async function runAgent(raw: unknown): Promise<AgentOutput> {
     confidence: 1,
     mode: activeModes[0],
     warnings: [],
-    evidence: []
+    evidence: [],
+    actions: [],
+    media: []
   };
 
   for (const currentMode of activeModes) {
@@ -115,6 +116,18 @@ export async function runAgent(raw: unknown): Promise<AgentOutput> {
     consolidatedOutput.confidence = Math.min(consolidatedOutput.confidence, currentOutput.confidence);
     consolidatedOutput.warnings = [...(consolidatedOutput.warnings || []), ...(currentOutput.warnings || [])];
     consolidatedOutput.evidence = [...(consolidatedOutput.evidence || []), ...(currentOutput.evidence || [])];
+    consolidatedOutput.actions = [...(consolidatedOutput.actions || []), ...(currentOutput.actions || [])];
+    consolidatedOutput.media = [...(consolidatedOutput.media || []), ...(currentOutput.media || [])];
+
+    if (currentOutput.rationale) {
+      consolidatedOutput.rationale = consolidatedOutput.rationale
+        ? `${consolidatedOutput.rationale} ${currentOutput.rationale}`
+        : currentOutput.rationale;
+    }
+
+    if (currentOutput.guardrail) {
+      consolidatedOutput.guardrail = currentOutput.guardrail;
+    }
     
     if (currentOutput.metadata) {
       consolidatedOutput.metadata = { ...(consolidatedOutput.metadata || {}), ...currentOutput.metadata };

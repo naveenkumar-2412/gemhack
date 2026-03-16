@@ -15,6 +15,12 @@ interface RelayOptions {
   callbacks: GeminiLiveCallbacks;
 }
 
+interface ConnectRetryOptions {
+  attempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
 export class GeminiLiveRelay {
   private upstream: WebSocket | null = null;
   private connected = false;
@@ -89,9 +95,29 @@ export class GeminiLiveRelay {
     });
   }
 
-  sendAudioChunk(chunkBase64: string, mimeType: string): void {
+  async connectWithRetry(options: ConnectRetryOptions): Promise<void> {
+    let lastError: Error | null = null;
+
+    for (let i = 0; i < options.attempts; i += 1) {
+      try {
+        await this.connect();
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error("Gemini Live connect failed");
+        if (i === options.attempts - 1) {
+          break;
+        }
+        const delay = Math.min(options.baseDelayMs * 2 ** i, options.maxDelayMs);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError ?? new Error("Gemini Live connect failed");
+  }
+
+  sendAudioChunk(chunkBase64: string, mimeType: string): boolean {
     if (!this.isConnected() || !this.upstream) {
-      return;
+      return false;
     }
 
     this.upstream.send(
@@ -106,15 +132,16 @@ export class GeminiLiveRelay {
         }
       })
     );
+    return true;
   }
 
-  sendTranscriptText(text: string, turnComplete: boolean): void {
+  sendTranscriptText(text: string, turnComplete: boolean): boolean {
     if (!this.isConnected() || !this.upstream) {
-      return;
+      return false;
     }
 
     if (!text.trim() && !turnComplete) {
-      return;
+      return false;
     }
 
     this.upstream.send(
@@ -130,11 +157,12 @@ export class GeminiLiveRelay {
         }
       })
     );
+    return true;
   }
 
-  endAudioTurn(): void {
+  endAudioTurn(): boolean {
     if (!this.isConnected() || !this.upstream) {
-      return;
+      return false;
     }
 
     this.upstream.send(
@@ -144,6 +172,12 @@ export class GeminiLiveRelay {
         }
       })
     );
+    return true;
+  }
+
+  async reconnectWithRetry(options: ConnectRetryOptions): Promise<void> {
+    this.close();
+    await this.connectWithRetry(options);
   }
 
   close(): void {
