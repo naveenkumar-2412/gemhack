@@ -19,6 +19,11 @@ export interface GenerateTextArgs {
   history?: Content[];
 }
 
+function isQuotaError(err: unknown): boolean {
+  const errorMessage = (err as { message?: string } | null)?.message?.toLowerCase() || "";
+  return errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("rate limit");
+}
+
 export async function generateWithGemini({
   systemInstruction,
   userPrompt,
@@ -45,8 +50,7 @@ export async function generateWithGemini({
     const text = result.response.text();
     return text?.trim() || "No response generated.";
   } catch (err: any) {
-    const errorMessage = err?.message?.toLowerCase() || "";
-    if (errorMessage.includes("429") || errorMessage.includes("quota")) {
+    if (isQuotaError(err)) {
       console.warn("[Gemini Quota] Active. Providing high-fidelity simulation.");
       return `[[QUOTA_GUARD_ACTIVE]]\n${systemInstruction.includes("Financial") ? "QUANTITATIVE ANALYSIS" : systemInstruction.includes("Legal") ? "LEGAL SCRUTINY REPORT" : "SIMULATED RESPONSE"}`;
     }
@@ -112,11 +116,25 @@ export async function* generateWithGeminiStream({
     systemInstruction
   });
 
-  const chat = model.startChat({ history });
-  const result = await chat.sendMessageStream(userPrompt);
+  try {
+    const chat = model.startChat({ history });
+    const result = await chat.sendMessageStream(userPrompt);
 
-  for await (const chunk of result.stream) {
-    const text = chunk.text();
-    if (text) yield text;
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) yield text;
+    }
+  } catch (err) {
+    if (isQuotaError(err)) {
+      console.warn("[Gemini Stream Quota] Active. Falling back to simulated stream.");
+      const fallback = simulateProfessionalResponse(systemInstruction, userPrompt);
+      const parts = fallback.split(/(\s+)/).filter(Boolean);
+      for (const part of parts) {
+        yield part;
+      }
+      return;
+    }
+
+    throw err;
   }
 }
