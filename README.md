@@ -55,7 +55,9 @@ deploy/
 infra/
   main.tf             — Terraform: Cloud Run, Firestore, Secret Manager (GEMINI_API_KEY), Artifact Registry
 docs/
-  architecture.md     — Full system Mermaid diagram
+  architecture.md     — Technical specification & Mermaid source
+  gallery/            — High-fidelity screenshots & architecture.png
+  gallery/            — High-fidelity screenshots of all 13 expert suites
   devpost-submission.md — Complete Devpost story
   demo-script.md      — 3m30s video guide
 ```
@@ -83,10 +85,19 @@ docs/
 
    > Without `GEMINI_API_KEY` the app returns mock responses — the full UI flow remains testable.
 
-5. **Run tests:**
-   ```bash
-   npm test
-   ```
+### 5. Reproducible Testing & Validation
+
+Judges can verify the core logic and integration points using the built-in test suite. The suite covers:
+- **Unit Tests**: Engine parsing logic, configuration, and utility functions.
+- **Integration Tests**: Express route handling, streaming response headers, and WebSocket relay protocol.
+
+To run the verification:
+```bash
+npm test
+```
+*Note: Tests use mocks for Gemini and Firestore by default, allowing for full coverage without requiring external API keys or cloud project access.*
+
+---
 
 ## Docker Compose (recommended for full local stack)
 
@@ -158,8 +169,8 @@ Prints Cloud Run URL, active revision, and recent logs for your proof recording.
 
 - [x] Public code repo with this README
 - [x] Spin-up instructions (see Local Setup above)
-- [x] Tests: `npm test`
-- [x] Architecture diagram in `docs/architecture.md`
+- [x] Tests & Validation: `npm test` (detailed in section 5)
+- [x] Architecture diagram in `docs/gallery/architecture_diagram.png`
 - [x] Cloud deployment proof via `deploy/proof-gcp.ps1`
 - [x] Demo video ≤ 4 minutes (follow `docs/demo-script.md`)
 - [x] Docker Compose for zero-GCP-project local validation
