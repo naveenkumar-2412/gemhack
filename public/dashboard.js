@@ -47,6 +47,7 @@ const btnExecute = document.getElementById("btnExecute");
 const streamContent = document.getElementById("streamContent");
 const evidenceList = document.getElementById("evidenceList");
 const sentimentValue = document.getElementById("sentimentValue");
+const sentimentHud = document.getElementById("sentimentHud");
 const waveformWrapper = document.getElementById("waveformWrapper");
 const mediaGallery = document.getElementById("mediaGallery");
 const galleryGrid = document.getElementById("galleryGrid");
@@ -232,9 +233,16 @@ async function streamEngine(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
+
+  if (!resp.ok || !resp.body) {
+    const errorBody = await resp.text().catch(() => "");
+    throw new Error(errorBody || `Streaming request failed with status ${resp.status}`);
+  }
   
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
+  let streamedAnyText = false;
+  let donePayloadText = "";
   
   while (true) {
     const { done, value } = await reader.read();
@@ -244,21 +252,44 @@ async function streamEngine(payload) {
     for (const rawLine of chunk.split("\n")) {
       const line = rawLine.trim();
       if (!line.startsWith("data:")) continue;
+      let ev;
       try {
-        const ev = JSON.parse(line.slice(5));
-        if (ev.type === "chunk") {
-          appendTerminal(ev.delta);
-        }
-      } catch (e) { /* ignore parse errors in fragments */ }
+        ev = JSON.parse(line.slice(5));
+      } catch (_e) {
+        // Ignore partial/incomplete SSE JSON fragments.
+        continue;
+      }
+
+      if (ev.type === "chunk") {
+        appendTerminal(ev.delta);
+        streamedAnyText = true;
+      }
+      if (ev.type === "done") {
+        donePayloadText = typeof ev.fullText === "string" ? ev.fullText : "";
+      }
+      if (ev.type === "error") {
+        throw new Error(ev.error || "Streaming failed");
+      }
     }
   }
 
+  if (!streamedAnyText && donePayloadText) {
+    appendTerminal(donePayloadText);
+  }
+
   // Fetch final metadata (guardrails/evidence) post-stream
-  const finalMeta = await fetch("/api/agent", {
+  const finalResp = await fetch("/api/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
-  }).then(r => r.json());
+  });
+
+  if (!finalResp.ok) {
+    const errorBody = await finalResp.text().catch(() => "");
+    throw new Error(errorBody || `Metadata request failed with status ${finalResp.status}`);
+  }
+
+  const finalMeta = await finalResp.json();
 
   renderFinal(finalMeta, true);
 }
