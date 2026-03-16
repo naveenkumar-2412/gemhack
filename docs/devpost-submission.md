@@ -40,7 +40,7 @@ The backend is deployed on Google Cloud Run and integrates Gemini model calls vi
 - Cloud-native deployment and IaC artifacts increase reproducibility and judging confidence.
 
 ## Public Code Repository
-Add your public repo URL here.
+https://github.com/naveenkumar-2412/gemhack
 
 ## Proof of Google Cloud Deployment
 Provide either:
